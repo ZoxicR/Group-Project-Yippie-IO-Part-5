@@ -39,3 +39,11 @@ check if counter = 0 (either or) - call back pop
 
 # Delete
 stackPointer =  base address
+
+
+-ivan 
+    - fasf
+    -
+
+-Manuel
+    -Stack
