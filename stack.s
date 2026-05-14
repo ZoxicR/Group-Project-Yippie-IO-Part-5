@@ -45,7 +45,7 @@
 .extern malloc
 .extern free
 
-.EQU STACK_SZ, 100 					// size for our stack
+.EQU STACK_SZ, 5 					// size for our stack
 .EQU DATA_SZ, 8 					// data size for 8 byte doubles
 .EQU TOTAL_SZ, STACK_SZ * DATA_SZ	// total size of stack 
 
@@ -56,6 +56,8 @@
 //
 //  X0: Contains total number of bytes to allocate for the stack
 //  X0 (return): Returns the base address of the stack using malloc
+//
+//	X7: Temporarily stores LR before malloc is called
 //
 //	LR: Must contain the return address (automatic when BL
 //      is used for the call)
@@ -69,6 +71,8 @@
 //*****************************************************************************
 stackConstructor:		// stackConstructor() function
 	
+	MOV X7, LR					// Save return address before LR
+	
 	MOV X0, #TOTAL_SZ			// Move the malloc size into X0
 	BL malloc					// Allocate memory
 	
@@ -79,12 +83,16 @@ stackConstructor:		// stackConstructor() function
 	MOV X2, #0					// Move 0 into X2
 	STR X2, [X1]				// Initialize the counter to 0
 	
+	MOV LR, X7					// Restore the orginal return address
+	
 	RET 						// Return to caller
 
 //*****************************************************************************
 // Function stackDestructor:  Frees the stack memory
 //
 //  X0: Contains the address istackBaseAddress
+//
+//	X7: Temporarily stores LR before malloc is called
 //	
 //	LR: Must contain the return address (automatic when BL
 //      is used for the call)	
@@ -97,10 +105,14 @@ stackConstructor:		// stackConstructor() function
 // Registers X0 - X8 are modified and not preserved
 //*****************************************************************************
 stackDestructor:	// stackDestructor() function
-
+	
+	MOV X7, LR					// Save return address before LR
+	
 	LDR X0, =istackBaseAddress	// Load the address of the variable into X0
 	LDR X0, [X0]				// Retrieve the base address 
 	BL free						// Free the memory
+	
+	MOV LR, X7					// Restore the orginal return address
 	
 	RET							// Return to caller
 
