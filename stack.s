@@ -5,33 +5,69 @@
 // stack, popping off the stack, and deleting which would empty the 
 // stack by implementing five stack functions push(), pop(), delete(), 
 // stackConstructor(), and stackDestructor()
+// Algorithm/Pseudocode:
+// stackConstructor:
+//		Allocate memory for TOTAL_SZ using malloc  
+//		Save the the base address in istackBaseAddress
+//		Init counter to 0
+//
+// stackDestructor:
+//		Load base address from istackBaseAddress
+//		Free dynamically allocated stack memory
+//
+// stackPush:
+//		Check if stack is full:
+//			if full then: return 0
+//
+//			else:	
+//
+//				Get memory location using counter offset
+//				Store value onto the stack
+//				Increment the counter
+//				Return 1
+//
+// stackPop:
+//		Check if stack is empty:
+//			if empty: return
+//			
+//			else:
+//
+//				Decrement the counter
+//				Get memory location using counter offset
+//				Load value from the stack onto D0
+//
+// delete:
+//		Reset icounter back to 0
+//
 
 .global stackConstructor, stackDestructor, stackPush, stackPop, delete  // Provide program starting address 
 
 .extern malloc
 .extern free
 
-.EQU STACK_SZ, 5 					// size for our stack
+.EQU STACK_SZ, 100 					// size for our stack
 .EQU DATA_SZ, 8 					// data size for 8 byte doubles
 .EQU TOTAL_SZ, STACK_SZ * DATA_SZ	// total size of stack 
 
 .text  // code section
 
 //*****************************************************************************
-// Function stackConstructor:  Creates the stack
+// Function stackConstructor:  Creates the stack and initializes the stack
 //
-//  X0: Contains data value to store in node
-//  X0 (return): Pointer to newly allocated node
+//  X0: Contains total number of bytes to allocate for the stack
+//  X0 (return): Returns the base address of the stack using malloc
+//
+//	LR: Must contain the return address (automatic when BL
+//      is used for the call)
 //
 // Description:
-// - Allocates 16 bytes using malloc
-// - 
-// - 
-// - 
+// - Allocates enough memory for STACK_SZ using malloc
+// - Saves the base address of the stack into istackBaseAddress
+// - Initializes icounter to 0
 //
 // Registers X0 - X8 are modified and not preserved
 //*****************************************************************************
-stackConstructor:
+stackConstructor:		// stackConstructor() function
 	
 	MOV X0, #TOTAL_SZ			// Move the malloc size into X0
 	BL malloc					// Allocate memory
@@ -48,18 +84,19 @@ stackConstructor:
 //*****************************************************************************
 // Function stackDestructor:  Frees the stack memory
 //
-//  X0: Contains 
-//  X0 (return): Pointer to newly allocated node
+//  X0: Contains the address istackBaseAddress
+//	
+//	LR: Must contain the return address (automatic when BL
+//      is used for the call)	
 //
 // Description:
-// - Allocates 16 bytes using malloc
-// - 
-// - 
-// - 
+// - Loads base address of the stack from istackBaseAddress into X0
+// - Retrieve the base address and save it into X0
+// - Frees the dynamically allocated stack memory using free
 //
 // Registers X0 - X8 are modified and not preserved
 //*****************************************************************************
-stackDestructor:
+stackDestructor:	// stackDestructor() function
 
 	LDR X0, =istackBaseAddress	// Load the address of the variable into X0
 	LDR X0, [X0]				// Retrieve the base address 
@@ -68,20 +105,23 @@ stackDestructor:
 	RET							// Return to caller
 
 //*****************************************************************************
-// Function stackPush:  Pushes values onto the stack 
+// Function stackPush:  Pushes values (double) onto the stack 
 //
-//  X0: Contains data value to store in node
-//  X0 (return): Returns 0
+//  D0: Contains the double value to push onto the stack
+//  X0 (return): Returns 1 on success and returns 0 upon failure
+//
+//	LR: Must contain the return address (automatic when BL
+//      is used for the call)
 //
 // Description:
-// - Allocates 16 bytes using malloc
-// - 
-// - 
-// - 
+// - CHecks if the the stack is already full before pushing any values onto the stack
+// - Calculates the correct memory location using counter offset
+// - Stores value onto stack memory
+// - Increments the counter after pushing 
 //
-// Registers X0 - X8 are modified and not preserved
+// Registers X0 - X8 and D0 are modified and not preserved
 //*****************************************************************************
-stackPush:
+stackPush:		// stackPush() function
 
 	LDR X1, =icounter			// Load the address of the icounter into X1
 	LDR X2, [X1]				// Load the value at icounter into X2
@@ -94,7 +134,7 @@ stackPush:
 	LDR X3, =istackBaseAddress	// Load the address of istackBaseAddress in X3
 	LDR X3, [X3]				// Load the value at istackBaseAddress into X3
 	
-	LSL X4, X2, #3				// Offset it by 8 bits 
+	LSL X4, X2, #3				// Offset it by 8 bytes 
 	ADD X4, X3, X4				// Add to get the actual memory location
 	
 	STR D0, [X4]				// Store double into X4
@@ -106,27 +146,29 @@ stackPush:
 
 	RET							// Return to caller	
 		
-pushfail:
+pushfail:	// label for pushfail
 	
 	MOV X0, #0					// Return 0 if push would exceed the size 
 	
 	RET							// Return to caller 
 
 //*****************************************************************************
-// Function stackPop:  Pushes values onto the stack 
+// Function stackPop:  Pops a double value off the stack 
 //
-//  X0: Contains data value to store in node
-//  X0 (return): Returns 0
+//  D0 (return): Returns the popped value from the stack
+//
+//	LR: Must contain the return address (automatic when BL
+//      is used for the call)
 //
 // Description:
-// - Allocates 16 bytes using malloc
-// - 
-// - 
-// - 
+// - Checks if the stack is empty before popping any values off the stack
+// - Decrements the counter
+// - Calculates the correct memory location using counter offset
+// - Loads the value from the stack into D0
 //
-// Registers X0 - X8 are modified and not preserved
+// Registers X0 - X8 and D0 are modified and not preserved
 //*****************************************************************************
-stackPop:
+stackPop:	// stackPop() function
 
 	LDR X1, =icounter			// Load the address of the icounter into X1
 	LDR X2, [X1]				// Load the value at icounter into X2
@@ -140,30 +182,29 @@ stackPop:
 	LDR X3, =istackBaseAddress	// Load the address of istackBaseAddress in X3
 	LDR X3, [X3]				// Load the value at istackBaseAddress into X3
 	
-	LSL X4, X2, #3				// Offset it by 8 bits 
+	LSL X4, X2, #3				// Offset it by 8 bytes 
 	ADD X4, X3, X4				// Add to get the actual memory location
 	
 	LDR D0, [X4]				// Load from stack into double
 	
-donePop:
+donePop:	// label for donePop
 	
 	RET							// Return to caller	
 
 //*****************************************************************************
-// Function delete:  Pushes values onto the stack 
+// Function delete:  Empties the stack by resetting to 0
 //
-//  X0: Contains data value to store in node
-//  X0 (return): Returns 0
+//  X0: Contains the address of icounter
+//
+//	LR: Must contain the return address (automatic when BL
+//      is used for the call)
 //
 // Description:
-// - Allocates 16 bytes using malloc
-// - 
-// - 
-// - 
+// - Resets the stack counter to 0
 //
 // Registers X0 - X8 are modified and not preserved
 //*****************************************************************************			
-delete:
+delete:		// delete() function
 
 	// COUNTER = 0 
 	
