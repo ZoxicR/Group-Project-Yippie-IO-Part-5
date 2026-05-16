@@ -40,16 +40,27 @@
 //		Reset icounter back to 0
 //
 
-.global stackConstructor, stackDestructor, stackPush, stackPop, delete  // Provide program starting address 
+#ifndef STACK_SZ
+#define STACK_SZ 5
+#endif
+
+#define TBYTES (STACK_SZ * 8)
+
+.global stackConstructor, stackDestructor, stackPush, stackPop, delete
+.global istackBaseAddress, icounter
 
 .extern malloc
 .extern free
 
-.EQU STACK_SZ, 5 					// size for our stack
-.EQU DATA_SZ, 8 					// data size for 8 byte doubles
-.EQU TOTAL_SZ, STACK_SZ * DATA_SZ	// total size of stack 
+    .bss
+    .align  3
+istackBaseAddress:
+    .skip   8
+    .align  3
+icounter:
+    .skip   8
 
-.text  // code section
+    .text
 
 //*****************************************************************************
 // Function stackConstructor:  Creates the stack and initializes the stack
@@ -57,10 +68,9 @@
 //  X0: Contains total number of bytes to allocate for the stack
 //  X0 (return): Returns the base address of the stack using malloc
 //
-//	X7: Temporarily stores LR before malloc is called
+//	X7: Temporarily stores X30 before malloc is called
 //
-//	LR: Must contain the return address (automatic when BL
-//      is used for the call)
+//	X30: Must contain the return address (automatic when BL is used)
 //
 // Description:
 // - Allocates enough memory for STACK_SZ using malloc
@@ -71,31 +81,37 @@
 //*****************************************************************************
 stackConstructor:		// stackConstructor() function
 	
-	MOV X7, LR					// Save return address before LR
+	STP	X29, X30, [SP, #-16]!			// save frame + return address
+	MOV	X29, SP
+
+	MOV	X0, #TBYTES				// malloc size (STACK_SZ * 8)
+	BL	malloc					// Allocate memory
 	
-	MOV X0, #TOTAL_SZ			// Move the malloc size into X0
-	BL malloc					// Allocate memory
+	CBZ	X0, ctorMallocFail			// avoid push through NULL base
 	
-	LDR X1, =istackBaseAddress	// Load the address of istackBaseAddress into X1
-	STR X0, [X1]				// Store the base address into X1
+	LDR	X1, =istackBaseAddress			// Load the address of istackBaseAddress into X1
+	STR	X0, [X1]				// Store the base address into X1
 	
-	LDR X1, =icounter			// Load the adress of icounter into X1
-	MOV X2, #0					// Move 0 into X2
-	STR X2, [X1]				// Initialize the counter to 0
+	LDR	X1, =icounter				// Load the adress of icounter into X1
+	STR	XZR, [X1]				// Initialize the counter to 0
 	
-	MOV LR, X7					// Restore the orginal return address
-	
+	LDP	X29, X30, [SP], #16			// Restore frame and return address
 	RET 						// Return to caller
+
+ctorMallocFail:
+	LDR	X1, =istackBaseAddress
+	STR	XZR, [X1]
+	LDP	X29, X30, [SP], #16
+	RET
 
 //*****************************************************************************
 // Function stackDestructor:  Frees the stack memory
 //
 //  X0: Contains the address istackBaseAddress
 //
-//	X7: Temporarily stores LR before malloc is called
+//	X7: Temporarily stores X30 before free is called
 //	
-//	LR: Must contain the return address (automatic when BL
-//      is used for the call)	
+//	X30: Must contain the return address (automatic when BL is used)	
 //
 // Description:
 // - Loads base address of the stack from istackBaseAddress into X0
@@ -106,14 +122,17 @@ stackConstructor:		// stackConstructor() function
 //*****************************************************************************
 stackDestructor:	// stackDestructor() function
 	
-	MOV X7, LR					// Save return address before LR
+	STP	X29, X30, [SP, #-16]!
+	MOV	X29, SP
+
+	LDR	X0, =istackBaseAddress			// Load the address of the variable into X0
+	LDR	X0, [X0]				// Retrieve the base address 
+	CBZ	X0, dtorSkipFree			// nothing allocated
 	
-	LDR X0, =istackBaseAddress	// Load the address of the variable into X0
-	LDR X0, [X0]				// Retrieve the base address 
-	BL free						// Free the memory
+	BL	free					// Free the memory
 	
-	MOV LR, X7					// Restore the orginal return address
-	
+dtorSkipFree:
+	LDP	X29, X30, [SP], #16
 	RET							// Return to caller
 
 //*****************************************************************************
@@ -122,8 +141,7 @@ stackDestructor:	// stackDestructor() function
 //  D0: Contains the double value to push onto the stack
 //  X0 (return): Returns 1 on success and returns 0 upon failure
 //
-//	LR: Must contain the return address (automatic when BL
-//      is used for the call)
+//	X30: Must contain the return address (automatic when BL is used)
 //
 // Description:
 // - CHecks if the the stack is already full before pushing any values onto the stack
@@ -135,32 +153,33 @@ stackDestructor:	// stackDestructor() function
 //*****************************************************************************
 stackPush:		// stackPush() function
 
-	LDR X1, =icounter			// Load the address of the icounter into X1
-	LDR X2, [X1]				// Load the value at icounter into X2
+	LDR	X1, =icounter				// Load the address of the icounter into X1
+	LDR	X2, [X1]				// Load the value at icounter into X2
 	
-	CMP X2, #STACK_SZ			// Comapring X2 with the stack size 
-	B.GE pushfail				// If greater than stack size then jump to pushfail
+	CMP	X2, #STACK_SZ				// Comapring X2 with the stack size 
+	B.GE	pushfail				// If greater than stack size then jump to pushfail
 	
 	// STORE THE INPUT INTO SP
 	
-	LDR X3, =istackBaseAddress	// Load the address of istackBaseAddress in X3
-	LDR X3, [X3]				// Load the value at istackBaseAddress into X3
+	LDR	X3, =istackBaseAddress			// Load the address of istackBaseAddress in X3
+	LDR	X3, [X3]				// Load the value at istackBaseAddress into X3
+	CBZ	X3, pushfail				// no heap block
 	
-	LSL X4, X2, #3				// Offset it by 8 bytes 
-	ADD X4, X3, X4				// Add to get the actual memory location
+	LSL	X4, X2, #3				// Offset it by 8 bytes 
+	ADD	X4, X3, X4				// Add to get the actual memory location
 	
-	STR D0, [X4]				// Store double into X4
+	STR	D0, [X4]				// Store double into X4
 	
-	ADD X2, X2, #1				// Increment the counter 
-	STR X2, [X1]				// Save the new counter 
+	ADD	X2, X2, #1				// Increment the counter 
+	STR	X2, [X1]				// Save the new counter 
 	
-	MOV X0, #1					// Return a non-zero for success
+	MOV	X0, #1					// Return a non-zero for success
 
 	RET							// Return to caller	
 		
 pushfail:	// label for pushfail
 	
-	MOV X0, #0					// Return 0 if push would exceed the size 
+	MOV	X0, #0					// Return 0 if push would exceed the size 
 	
 	RET							// Return to caller 
 
@@ -169,8 +188,7 @@ pushfail:	// label for pushfail
 //
 //  D0 (return): Returns the popped value from the stack
 //
-//	LR: Must contain the return address (automatic when BL
-//      is used for the call)
+//	X30: Must contain the return address (automatic when BL is used)
 //
 // Description:
 // - Checks if the stack is empty before popping any values off the stack
@@ -182,34 +200,37 @@ pushfail:	// label for pushfail
 //*****************************************************************************
 stackPop:	// stackPop() function
 
-	LDR X1, =icounter			// Load the address of the icounter into X1
-	LDR X2, [X1]				// Load the value at icounter into X2
+	LDR	X1, =icounter				// Load the address of the icounter into X1
+	LDR	X2, [X1]				// Load the value at icounter into X2
 	
-	CMP X2, #0					// Checking if the stack is empty
-	B.EQ donePop				// If empty then jump to done
+	CMP	X2, #0					// Checking if the stack is empty
+	B.EQ	donePopEmpty				// If empty then jump to done
 	
-	SUB X2, X2, #1				// Decrement the counter 
-	STR X2, [X1]				// Save the new counter 
+	SUB	X2, X2, #1				// Decrement the counter 
+	STR	X2, [X1]				// Save the new counter 
 	
-	LDR X3, =istackBaseAddress	// Load the address of istackBaseAddress in X3
-	LDR X3, [X3]				// Load the value at istackBaseAddress into X3
+	LDR	X3, =istackBaseAddress			// Load the address of istackBaseAddress in X3
+	LDR	X3, [X3]				// Load the value at istackBaseAddress into X3
 	
-	LSL X4, X2, #3				// Offset it by 8 bytes 
-	ADD X4, X3, X4				// Add to get the actual memory location
+	LSL	X4, X2, #3				// Offset it by 8 bytes 
+	ADD	X4, X3, X4				// Add to get the actual memory location
 	
-	LDR D0, [X4]				// Load from stack into double
+	LDR	D0, [X4]				// Load from stack into double
 	
 donePop:	// label for donePop
 	
 	RET							// Return to caller	
+
+donePopEmpty:
+	FMOV	D0, XZR
+	B	donePop
 
 //*****************************************************************************
 // Function delete:  Empties the stack by resetting to 0
 //
 //  X0: Contains the address of icounter
 //
-//	LR: Must contain the return address (automatic when BL
-//      is used for the call)
+//	X30: Must contain the return address (automatic when BL is used)
 //
 // Description:
 // - Resets the stack counter to 0
@@ -220,14 +241,9 @@ delete:		// delete() function
 
 	// COUNTER = 0 
 	
-	LDR X0, =icounter			// Load the adress of icounter into X0
-	MOV X1, #0					// Move a 0 into X1
-	STR X1, [X0]				// Store the 0 into icounter (Resetting it)
+	LDR	X0, =icounter				// Load the adress of icounter into X0
+	STR	XZR, [X0]				// Store 0 into icounter (Resetting it)
 	
 	RET							// Return to caller
-
-	.data  // data section
-istackBaseAddress:	.quad 0
-icounter:			.quad 0
 
 .end // end of program
